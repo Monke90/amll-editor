@@ -31,6 +31,7 @@
     "@codemirror/view": "^6.40.0",
     "@mdi/font": "^7.4.47",
     "@primeuix/themes": "^1.2.5",
+    "@vercel/analytics": "^2.0.1",
     "@vueuse/core": "^14.2.1",
     "codemirror": "^6.0.2",
     "compromise": "^14.15.0",

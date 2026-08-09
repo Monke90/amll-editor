@@ -19,6 +19,7 @@
 </template>
 
 <script setup lang="ts">
+import { inject } from '@vercel/analytics'
 import { t } from '@i18n'
 import { useMediaQuery } from '@vueuse/core'
 import { onMounted, onUnmounted, watch } from 'vue'
@@ -49,6 +50,9 @@ import {
   parseKeyEvent,
   shouldEscapeInInput,
 } from '../core/hotkey'
+
+// Initialize Vercel Web Analytics
+inject()
 
 editHistory.init()
 editHistory.markSaved() // Empty state is considered saved

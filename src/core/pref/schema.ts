@@ -26,6 +26,8 @@ export interface PreferenceSchema {
   hideTranslateRoman: boolean
   // Spectrogram
   spectrogramColor: SpectrogramColor
+  spectrogramShowSyllableBlocks: boolean
+  spectrogramBlockScope: 'selected' | 'all'
   // Misc
   notifyCompatIssuesOnStartup: boolean
   sidebarWidth: number
@@ -51,6 +53,8 @@ export const getDefaultPref = (): PreferenceSchema => ({
   swapTranslateRoman: false,
   hideTranslateRoman: false,
   spectrogramColor: 'icyBlue',
+  spectrogramShowSyllableBlocks: false,
+  spectrogramBlockScope: 'selected',
   notifyCompatIssuesOnStartup: true,
   sidebarWidth: 360,
   spectrogramHeight: 240,

@@ -3,8 +3,9 @@
 </template>
 
 <script setup lang="ts">
-import { useDark } from '@vueuse/core'
 import { nextTick, onMounted, onUnmounted, useTemplateRef, watch } from 'vue'
+
+import { useEffectiveDark } from '@core/theme'
 
 import { ms2strShort } from '@utils/formatTime'
 
@@ -33,7 +34,7 @@ function getTickInterval(zoom: number) {
 
 const canvasEl = useTemplateRef('canvasEl')
 
-const isDark = useDark()
+const isDark = useEffectiveDark()
 const textOpacity = 0.5
 const markOpacity = 0.3
 const markFontSize = 12

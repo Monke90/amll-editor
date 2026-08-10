@@ -5,6 +5,7 @@ import { shallowRef, watch } from 'vue'
 import { compatibilityMap } from '@core/compat'
 import { type PreferenceSchema, getDefaultPref } from '@core/pref'
 import type { SpectrogramColor } from '@core/spectrogram/colors'
+import { THEME_ACCENTS, THEME_ACCENT_LABELS, type ThemeAccent } from '@core/theme'
 
 import { usePrefStore, useRuntimeStore, useStaticStore } from '@states/stores'
 
@@ -65,6 +66,27 @@ watch(selectedSpecColorOptn, (val) => {
   if (!val) return
   prefStore.spectrogramColor = val.value as SpectrogramColor
 })
+
+const themeModeOptns = [
+  { label: 'System', value: 'system' },
+  { label: 'Light', value: 'light' },
+  { label: 'Dark', value: 'dark' },
+]
+const selectedThemeModeOptn = shallowRef(
+  themeModeOptns.find((opt) => opt.value === prefStore.themeMode) ?? themeModeOptns[0],
+)
+watch(selectedThemeModeOptn, (val) => {
+  if (!val) return
+  prefStore.themeMode = val.value as PreferenceSchema['themeMode']
+})
+
+const themeAccentOptns = THEME_ACCENTS.map((accent) => ({
+  accent,
+  label: THEME_ACCENT_LABELS[accent],
+}))
+function selectAccent(accent: ThemeAccent) {
+  prefStore.themeAccent = accent
+}
 </script>
 
 <template>
@@ -82,6 +104,24 @@ watch(selectedSpecColorOptn, (val) => {
       <PrefSwitchItem pref-key="packAudioToProject" />
       <PrefSwitchItem pref-key="ttmlAsDefault" experimental />
       <PrefSwitchItem pref-key="askPermissionOnOpen" />
+    </div>
+    <div class="pref-group">
+      <div class="pref-group-title">Appearance</div>
+      <PrefItem label="Theme" desc="Follow the system, or force light/dark mode">
+        <Select v-model="selectedThemeModeOptn" :options="themeModeOptns" optionLabel="label" />
+      </PrefItem>
+      <PrefItem label="Accent color" desc="Pick a basic accent color theme for the app">
+        <div class="theme-accent-swatches">
+          <div
+            v-for="optn in themeAccentOptns"
+            :key="optn.accent"
+            class="theme-accent-swatch"
+            :class="[`theme-swatch-${optn.accent}`, { selected: prefStore.themeAccent === optn.accent }]"
+            :title="optn.label"
+            @click="selectAccent(optn.accent)"
+          ></div>
+        </div>
+      </PrefItem>
     </div>
     <div class="pref-group">
       <div class="pref-group-title">{{ tt.groups.key() }}</div>
@@ -181,5 +221,15 @@ watch(selectedSpecColorOptn, (val) => {
 .refresh-tip {
   padding-top: 0.5rem;
   font-size: 0.9rem;
+}
+.theme-accent-swatches {
+  display: flex;
+  gap: 0.6rem;
+}
+@each $accent in (emerald, blue, violet, rose, amber, teal) {
+  .theme-swatch-#{$accent} {
+    background-color: var(--p-#{$accent}-500);
+    --swatch-color: var(--p-#{$accent}-500);
+  }
 }
 </style>

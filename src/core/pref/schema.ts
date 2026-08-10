@@ -1,5 +1,6 @@
 import { type HotKey, getDefaultHotkeyMap } from '@core/hotkey'
 import type { SpectrogramColor } from '@core/spectrogram/colors'
+import type { ThemeAccent } from '@core/theme'
 
 import { isAppleDevice } from '@utils/detectAppleDevice'
 
@@ -28,6 +29,11 @@ export interface PreferenceSchema {
   spectrogramColor: SpectrogramColor
   spectrogramShowSyllableBlocks: boolean
   spectrogramBlockScope: 'selected' | 'all'
+  // Theme
+  themeMode: 'system' | 'light' | 'dark'
+  themeAccent: ThemeAccent
+  // Spell check
+  spellCheckEnabled: boolean
   // Misc
   notifyCompatIssuesOnStartup: boolean
   sidebarWidth: number
@@ -55,6 +61,9 @@ export const getDefaultPref = (): PreferenceSchema => ({
   spectrogramColor: 'icyBlue',
   spectrogramShowSyllableBlocks: false,
   spectrogramBlockScope: 'selected',
+  themeMode: 'system',
+  themeAccent: 'emerald',
+  spellCheckEnabled: false,
   notifyCompatIssuesOnStartup: true,
   sidebarWidth: 360,
   spectrogramHeight: 240,

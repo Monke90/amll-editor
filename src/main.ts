@@ -18,6 +18,7 @@ import '@assets/fonts/index.scss'
 import '@mdi/font/css/materialdesignicons.css'
 import '@ui/styles/common.scss'
 import '@ui/styles/rewrites.scss'
+import '@ui/styles/themes.scss'
 import 'floating-vue/dist/style.css'
 import 'primeicons/primeicons.css'
 
@@ -37,6 +38,9 @@ app.use(PrimeVue, {
         colorScheme: { light: { content: { background: '{surface.50}' } } },
       },
     }),
+    options: {
+      darkModeSelector: '.app-dark',
+    },
   },
 })
 app.directive('focustrap', FocusTrap)

@@ -66,6 +66,7 @@
     <div class="cline-inner">
       <div class="cline-content">
         <slot></slot>
+        <SpellCheckOverlay v-if="prefStore.spellCheckEnabled" :line="props.line" />
       </div>
       <div class="cline-secondary" ref="secondaryInputShellEl" v-if="!prefStore.hideTranslateRoman">
         <template v-for="f in orderedFields" :key="f.key">
@@ -124,6 +125,8 @@ import type { TimeoutHandle } from '@utils/types'
 
 import InputText from '@ui/components/InputText.vue'
 import { Button, FloatLabel, InputGroup, InputGroupAddon } from 'primevue'
+
+import SpellCheckOverlay from './SpellCheckOverlay.vue'
 
 const tt = t.editor.line
 
@@ -437,6 +440,7 @@ function handleRomanGenerate() {
 }
 .cline-content {
   flex: 1;
+  position: relative;
   display: flex;
   padding: var(--c-syl-gap);
   padding-right: 0;

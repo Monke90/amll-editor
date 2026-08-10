@@ -1,0 +1,52 @@
+// Basic accent themes.
+//
+// PrimeVue's Aura preset exposes the full Tailwind-style color ramps as CSS
+// custom properties (--p-emerald-500, --p-blue-500, --p-violet-500, ...)
+// regardless of which color is chosen as the semantic "primary". Every
+// PrimeVue component token (button backgrounds, focus rings, selection
+// highlights, etc.) is itself defined in terms of --p-primary-{level}, so
+// re-pointing those root variables at a different ramp re-themes the whole
+// app without touching PrimeVue's runtime preset.
+//
+// [data-accent="..."] is set on <html> by applyAppTheme() in @core/theme.
+
+@each $accent in (emerald, blue, violet, rose, amber, teal) {
+  :root[data-accent='#{$accent}'] {
+    --p-primary-50: var(--p-#{$accent}-50);
+    --p-primary-100: var(--p-#{$accent}-100);
+    --p-primary-200: var(--p-#{$accent}-200);
+    --p-primary-300: var(--p-#{$accent}-300);
+    --p-primary-400: var(--p-#{$accent}-400);
+    --p-primary-500: var(--p-#{$accent}-500);
+    --p-primary-600: var(--p-#{$accent}-600);
+    --p-primary-700: var(--p-#{$accent}-700);
+    --p-primary-800: var(--p-#{$accent}-800);
+    --p-primary-900: var(--p-#{$accent}-900);
+    --p-primary-950: var(--p-#{$accent}-950);
+
+    // Redundant safety net in case a token isn't wired through the
+    // --p-primary-{level} chain in a given PrimeVue version.
+    --p-primary-color: light-dark(var(--p-primary-500), var(--p-primary-400));
+    --p-primary-contrast-color: light-dark(var(--p-surface-0), var(--p-surface-900));
+    --p-primary-hover-color: light-dark(var(--p-primary-600), var(--p-primary-300));
+    --p-primary-active-color: light-dark(var(--p-primary-700), var(--p-primary-200));
+  }
+}
+
+// Small color swatches used by the accent picker in Preferences.
+.theme-accent-swatch {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor, transparent 70%);
+  transition:
+    transform 0.1s,
+    box-shadow 0.1s;
+  &:hover {
+    transform: scale(1.1);
+  }
+  &.selected {
+    box-shadow: 0 0 0 2px var(--p-content-background), 0 0 0 4px var(--swatch-color, currentColor);
+  }
+}

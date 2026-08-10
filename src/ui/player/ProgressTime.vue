@@ -15,15 +15,15 @@
 </template>
 
 <script setup lang="ts">
-import { useDark } from '@vueuse/core'
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 
 import { audioEngine } from '@core/audio'
+import { useEffectiveDark } from '@core/theme'
 
 import { ms2str } from '@utils/formatTime'
 
 const { amendedProgressComputed, lengthComputed } = audioEngine
-const isDark = useDark()
+const isDark = useEffectiveDark()
 const canvasReady = ref(false)
 const audioProgressWrapperEl = useTemplateRef('audioProgressWrapperEl')
 const audioProgressCanvas = useTemplateRef('audioProgressCanvas')

@@ -28,6 +28,19 @@
       @click="runtimeStore.dialogShown.findReplace = !runtimeStore.dialogShown.findReplace"
       v-tooltip="tipDesc(tt.findReplace(), tt.findReplaceDesc(), 'find')"
     />
+    <Button
+      icon="mdi mdi-spellcheck"
+      label="Spell check"
+      size="small"
+      :severity="prefStore.spellCheckEnabled ? undefined : 'secondary'"
+      @click="prefStore.spellCheckEnabled = !prefStore.spellCheckEnabled"
+      v-tooltip="
+        tipDesc(
+          'Spell check',
+          'Underline possibly misspelled words using your browser\'s built-in spellchecker',
+        )
+      "
+    />
   </RibbonGroup>
 </template>
 
@@ -36,7 +49,7 @@ import { t } from '@i18n'
 
 import { useGlobalKeyboard } from '@core/hotkey'
 
-import { useRuntimeStore } from '@states/stores'
+import { usePrefStore, useRuntimeStore } from '@states/stores'
 
 import { tipDesc } from '@utils/generateTooltip'
 
@@ -48,6 +61,7 @@ import { Button } from 'primevue'
 const tt = t.ribbon.content
 
 const runtimeStore = useRuntimeStore()
+const prefStore = usePrefStore()
 
 useGlobalKeyboard('batchSplitText', () => {
   runtimeStore.toogleSidebar(SidebarKey.SplitText)

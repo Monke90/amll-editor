@@ -985,6 +985,22 @@ type RootTranslation = {
 				 * 选​择​预​设​色​彩​方​案​或​自​定​义​渐​变
 				 */
 				spectrogramColorDesc: string
+
+
+        
+        spectrogramShowSyllableBlocks: string
+
+
+        
+        spectrogramShowSyllableBlocksDesc: string
+
+
+        
+        spellCheckEnabled: string
+
+        
+
+        spellCheckEnabledDesc: string
 			}
 		}
 	}

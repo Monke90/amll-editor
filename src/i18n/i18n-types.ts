@@ -3106,6 +3106,22 @@ export type TranslationFunctions = {
 				 * 选择预设色彩方案或自定义渐变
 				 */
 				spectrogramColorDesc: () => LocalizedString
+
+
+
+        spectrogramShowSyllableBlocks: () => LocalizedString
+
+
+
+        spectrogramShowSyllableBlocksDesc: () => LocalizedString
+
+
+
+        spellCheckEnabled: () => LocalizedString
+
+
+
+        spellCheckEnabledDesc: () => LocalizedString
 			}
 		}
 	}

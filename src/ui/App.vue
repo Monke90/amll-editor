@@ -24,6 +24,7 @@ import { useMediaQuery } from '@vueuse/core'
 import { onMounted, onUnmounted, watch } from 'vue'
 
 import { fileState } from '@core/file'
+import { applyAppTheme } from '@core/theme'
 import { View } from '@core/types'
 
 import { editHistory } from '@states/services/history'
@@ -52,6 +53,7 @@ import {
 
 editHistory.init()
 editHistory.markSaved() // Empty state is considered saved
+applyAppTheme()
 
 const prefStore = usePrefStore()
 const runtimeStore = useRuntimeStore()

@@ -1,7 +1,10 @@
+import { updatePreset } from '@primeuix/themes'
 import { usePreferredDark } from '@vueuse/core'
 import { computed, watchEffect } from 'vue'
 
 import { usePrefStore } from '@states/stores'
+
+import { makePrimeColorSet } from '@utils/makePrimeColorSet'
 
 /** 内置的几种基础配色主题，均取自 PrimeVue Aura 预设自带的调色板 */
 export const THEME_ACCENTS = ['emerald', 'blue', 'violet', 'rose', 'amber', 'teal'] as const
@@ -43,25 +46,18 @@ export function applyAppTheme() {
     root.style.colorScheme = prefStore.themeMode === 'system' ? 'light dark' : prefStore.themeMode
     root.dataset.accent = prefStore.themeAccent
 
-    // PrimeVue writes --p-primary-color (and friends) directly as an
-    // *inline* style on <html> during its own theme init. Inline styles
-    // always win over any CSS class/attribute selector, so the
-    // [data-accent] stylesheet rules in themes.scss alone can't override
-    // it. Re-set the same properties inline here, after PrimeVue's own
-    // set, so ours takes effect instead — and re-apply every time the
-    // accent/mode changes, since this watchEffect re-runs reactively.
-    root.style.setProperty('--p-primary-color', 'light-dark(var(--p-primary-500), var(--p-primary-400))')
-    root.style.setProperty(
-      '--p-primary-contrast-color',
-      'light-dark(var(--p-surface-0), var(--p-surface-900))',
-    )
-    root.style.setProperty(
-      '--p-primary-hover-color',
-      'light-dark(var(--p-primary-600), var(--p-primary-300))',
-    )
-    root.style.setProperty(
-      '--p-primary-active-color',
-      'light-dark(var(--p-primary-700), var(--p-primary-200))',
-    )
+    // Re-run PrimeVue's own theme computation with the new primary color.
+    // This is the officially supported way to change the accent at
+    // runtime — PrimeVue writes --p-primary-color (and its hover/active/
+    // contrast siblings) as an *inline* style on <html> during its own
+    // theme init, which always beats a plain CSS class/attribute
+    // selector. Going through updatePreset() lets PrimeVue itself
+    // recompute and re-apply all of those derived tokens consistently,
+    // instead of us trying to out-specificity it from a stylesheet.
+    updatePreset({
+      semantic: {
+        primary: makePrimeColorSet(prefStore.themeAccent),
+      },
+    })
   })
 }

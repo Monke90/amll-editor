@@ -42,5 +42,26 @@ export function applyAppTheme() {
     root.classList.toggle('app-dark', isDark.value)
     root.style.colorScheme = prefStore.themeMode === 'system' ? 'light dark' : prefStore.themeMode
     root.dataset.accent = prefStore.themeAccent
+
+    // PrimeVue writes --p-primary-color (and friends) directly as an
+    // *inline* style on <html> during its own theme init. Inline styles
+    // always win over any CSS class/attribute selector, so the
+    // [data-accent] stylesheet rules in themes.scss alone can't override
+    // it. Re-set the same properties inline here, after PrimeVue's own
+    // set, so ours takes effect instead — and re-apply every time the
+    // accent/mode changes, since this watchEffect re-runs reactively.
+    root.style.setProperty('--p-primary-color', 'light-dark(var(--p-primary-500), var(--p-primary-400))')
+    root.style.setProperty(
+      '--p-primary-contrast-color',
+      'light-dark(var(--p-surface-0), var(--p-surface-900))',
+    )
+    root.style.setProperty(
+      '--p-primary-hover-color',
+      'light-dark(var(--p-primary-600), var(--p-primary-300))',
+    )
+    root.style.setProperty(
+      '--p-primary-active-color',
+      'light-dark(var(--p-primary-700), var(--p-primary-200))',
+    )
   })
 }

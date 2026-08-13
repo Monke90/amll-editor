@@ -41,6 +41,7 @@
         v-model="inputModel"
         size="large"
         :spellcheck="prefStore.spellCheckEnabled"
+        lang="en"
         @keydown="handleKeydown"
         @focus="handleFocus"
         @compositionend="hijackCompositionBackquote"

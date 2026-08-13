@@ -1,247 +1,289 @@
 <template>
-  <div class="spectrogram-toolkit">
-    <div class="spectrogram-resize-handle" v-bind="resizeHandleProps"></div>
-    <div class="spectrogram-slider">
-      <Button icon="pi pi-arrow-right-arrow-left" severity="secondary" />
-      <Slider orientation="vertical" :min="0.5" :max="8" :step="0.5" v-model="gainModel" />
-    </div>
+  <div
+    class="syl-blocks-layer"
+    v-if="prefStore.spectrogramShowSyllableBlocks"
+    :style="{ height: `${ctx.displayHeight.value}px` }"
+  >
     <div
-      class="spectrogram-ruler-container"
-      @wheel.prevent="handleWheel"
-      @mousemove="handleMouseMove"
-      @mouseenter="handleMouseEnter"
-      @mouseleave="handleMouseLeave"
+      v-for="entry in visibleEntries"
+      :key="entry.syl.id"
+      class="syl-block"
+      :class="{
+        selected: runtimeStore.selectedSyllables.has(entry.syl),
+        active: isActiveSyl(entry.syl),
+        'line-alt': entry.lineIndex % 2 === 1,
+        dragging: draggingSylId === entry.syl.id,
+      }"
+      :style="blockStyle(entry.syl)"
+      :title="entry.syl.text"
+      @mousedown.stop="handleBlockMouseDown($event, entry.line, entry.syl, 'move')"
     >
-      <div class="spectrogram-block-toolbar">
-        <Button
-          icon="pi pi-th-large"
-          size="small"
-          v-tooltip="'Show syllable blocks'"
-          :severity="prefStore.spectrogramShowSyllableBlocks ? 'primary' : 'secondary'"
-          @click="prefStore.spectrogramShowSyllableBlocks = !prefStore.spectrogramShowSyllableBlocks"
-        />
-        <Button
-          v-if="prefStore.spectrogramShowSyllableBlocks"
-          :icon="prefStore.spectrogramBlockScope === 'all' ? 'pi pi-bars' : 'pi pi-align-left'"
-          size="small"
-          severity="secondary"
-          v-tooltip="
-            prefStore.spectrogramBlockScope === 'all'
-              ? 'Editing all lines — click to switch to selected line only'
-              : 'Editing selected line only — click to switch to all lines'
-          "
-          @click="
-            prefStore.spectrogramBlockScope = prefStore.spectrogramBlockScope === 'all' ? 'selected' : 'all'
-          "
-        />
-      </div>
-      <Ruler
-        :zoom="ctx.zoom.value"
-        :scrollLeft="ctx.scrollLeft.value"
-        :duration="audioEngine.lengthComputed.value / 1000"
-        :width="containerWidth"
-      />
       <div
-        class="spectrogram-container"
-        ref="containerEl"
-        :style="{ height: `${ctx.displayHeight.value}px` }"
-      >
-        <div
-          class="spectrogram-content"
-          :style="{
-            width: `${ctx.totalContentWidth.value}px`,
-            transform: `translate3d(${-Math.round(ctx.scrollLeft.value)}px, 0, 0)`,
-          }"
-        >
-          <Tile v-for="tile in visibleTiles" :key="tile.id" v-bind="tile" />
-        </div>
-
-        <SyllableBlocks />
-
-        <EmptyTip
-          v-if="!audioEngine.audioBuffer"
-          icon="pi pi-volume-off"
-          :title="tt.emptyTip.title()"
-          :tip="tt.emptyTip.detail()"
-          compact
-        />
-      </div>
+        class="syl-block-handle left"
+        @mousedown.stop="handleBlockMouseDown($event, entry.line, entry.syl, 'start')"
+      ></div>
+      <span class="syl-block-text">{{ entry.syl.text }}</span>
+      <div
+        class="syl-block-handle right"
+        @mousedown.stop="handleBlockMouseDown($event, entry.line, entry.syl, 'end')"
+      ></div>
     </div>
+    <EmptyTip
+      v-if="prefStore.spectrogramBlockScope === 'selected' && scopeLines.length === 0"
+      class="syl-blocks-empty-tip"
+      icon="pi pi-arrows-h"
+      title="No line selected"
+      tip="Select a lyric line to adjust its syllable timing here, or switch to All lines"
+      compact
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { t } from '@i18n'
-import { useElementSize } from '@vueuse/core'
-import { nanoid } from 'nanoid'
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 
-import { audioEngine } from '@core/audio/index.ts'
-import { useSpectrogramProvider } from '@core/spectrogram/SpectrogramContext'
-import { parseSpectrogramColor } from '@core/spectrogram/colors'
-import { useSpectrogramInteraction } from '@core/spectrogram/useSpectrogramInteraction'
-import { useSpectrogramResize } from '@core/spectrogram/useSpectrogramResize'
-import { useSpectrogramTiles } from '@core/spectrogram/useSpectrogramTiles'
+import { audioEngine } from '@core/audio'
+import { useSpectrogramContext } from '@core/spectrogram/SpectrogramContext'
+import type { LyricLine, LyricSyllable } from '@core/types'
 
-import { usePrefStore } from '@states/stores'
+import { useCoreStore, usePrefStore, useRuntimeStore } from '@states/stores'
 
-import Ruler from './Ruler.vue'
-import SyllableBlocks from './SyllableBlocks.vue'
-import Tile from './Tile.vue'
 import EmptyTip from '@ui/components/EmptyTip.vue'
-import { Button, Slider } from 'primevue'
 
-const tt = t.spectrogram
-
+const ctx = useSpectrogramContext()
+const coreStore = useCoreStore()
+const runtimeStore = useRuntimeStore()
 const prefStore = usePrefStore()
 
-const containerEl = ref<HTMLElement | null>(null)
-const { width: containerWidth } = useElementSize(containerEl)
-const { audioBufferComputed } = audioEngine
+const MIN_DURATION_MS = 30
 
-const gainModel = ref(3)
-const zoomModel = ref(100)
-const scrollLeftModel = ref(0)
-const paletteIdModel = computed(() => {
-  if (typeof prefStore.spectrogramColor === 'string') return prefStore.spectrogramColor
-  return nanoid()
-})
-const paletteModel = computed(() => parseSpectrogramColor(prefStore.spectrogramColor))
-
-// 初始化 Context 状态源
-const ctx = useSpectrogramProvider({
-  audioBufferComputed,
-  gainModel,
-  zoomModel,
-  scrollLeftModel,
-  paletteIdModel,
-  paletteModel,
+const scopeLines = computed<LyricLine[]>(() => {
+  if (prefStore.spectrogramBlockScope === 'all') return coreStore.lyricLines
+  const line = runtimeStore.getFirstSelectedLine()
+  return line ? [line] : []
 })
 
-// 初始化交互相关
-const { handleWheel, handleMouseMove, handleMouseEnter, handleMouseLeave } =
-  useSpectrogramInteraction({
-    ctx,
-    containerEl,
-  })
+interface BlockEntry {
+  line: LyricLine
+  lineIndex: number
+  syl: LyricSyllable
+}
 
-// 高度调整相关
-const {
-  height: resizedHeight,
-  isResizing,
-  resizeHandleProps,
-} = useSpectrogramResize({
-  initialHeight: prefStore.spectrogramHeight,
-  minHeight: 120,
-  maxHeight: 600,
-})
-
-// 拖拽调整高度时只修改 CSS 高度，停止拖拽时再更新渲染分辨率以避免每帧重渲染的性能问题
-watch(
-  [resizedHeight, isResizing],
-  () => {
-    const h = resizedHeight.value
-    ctx.displayHeight.value = h
-    if (!isResizing.value) {
-      ctx.renderHeight.value = h
-      prefStore.spectrogramHeight = h
+const visibleEntries = computed<BlockEntry[]>(() => {
+  if (!prefStore.spectrogramShowSyllableBlocks) return []
+  const bufferMs = 1000
+  const startMs = ctx.viewStartTime.value * 1000 - bufferMs
+  const endMs = ctx.viewEndTime.value * 1000 + bufferMs
+  const entries: BlockEntry[] = []
+  for (const line of scopeLines.value) {
+    const lineIndex = coreStore.lyricLines.indexOf(line)
+    for (const syl of line.syllables) {
+      if (!syl.text.trim()) continue
+      if (syl.endTime < startMs || syl.startTime > endMs) continue
+      entries.push({ line, lineIndex, syl })
     }
-  },
-  { immediate: true },
-)
+  }
+  return entries
+})
 
-// 获取瓦片
-const { visibleTiles } = useSpectrogramTiles({
-  ctx,
-  audioBuffer: audioBufferComputed,
+function isActiveSyl(syl: LyricSyllable) {
+  return (
+    Boolean(syl.startTime || syl.endTime) &&
+    audioEngine.amendedProgressComputed.value >= syl.startTime &&
+    audioEngine.amendedProgressComputed.value <= syl.endTime
+  )
+}
+
+function msToPx(ms: number) {
+  return (ms / 1000) * ctx.zoom.value - ctx.scrollLeft.value
+}
+
+function blockStyle(syl: LyricSyllable) {
+  const left = msToPx(syl.startTime)
+  const width = Math.max(3, msToPx(syl.endTime) - left)
+  return { left: `${left}px`, width: `${width}px` }
+}
+
+function isFirstTimedSyl(line: LyricLine, syl: LyricSyllable) {
+  for (const s of line.syllables) if (s.text.trim()) return s === syl
+  return false
+}
+function isLastTimedSyl(line: LyricLine, syl: LyricSyllable) {
+  for (let i = line.syllables.length - 1; i >= 0; i--) {
+    const s = line.syllables[i]!
+    if (s.text.trim()) return s === syl
+  }
+  return false
+}
+
+type DragMode = 'move' | 'start' | 'end'
+
+interface DragState {
+  mode: DragMode
+  line: LyricLine
+  syl: LyricSyllable
+  startClientX: number
+  origStart: number
+  origEnd: number
+  lowerBound: number
+  upperBound: number
+}
+
+let drag: DragState | null = null
+const draggingSylId = ref<string | null>(null)
+
+function neighborBounds(line: LyricLine, syl: LyricSyllable) {
+  const idx = line.syllables.indexOf(syl)
+  const prev = line.syllables[idx - 1]
+  const next = line.syllables[idx + 1]
+  const lowerBound = prev ? prev.endTime : 0
+  const upperBound = next ? next.startTime : ctx.duration.value * 1000
+  return { lowerBound, upperBound }
+}
+
+function handleBlockMouseDown(
+  e: MouseEvent,
+  line: LyricLine,
+  syl: LyricSyllable,
+  mode: DragMode,
+) {
+  if (e.button !== 0) return
+  e.preventDefault()
+  runtimeStore.selectLineSyl(line, syl)
+
+  const { lowerBound, upperBound } = neighborBounds(line, syl)
+  drag = {
+    mode,
+    line,
+    syl,
+    startClientX: e.clientX,
+    origStart: syl.startTime,
+    origEnd: syl.endTime,
+    lowerBound,
+    upperBound,
+  }
+  draggingSylId.value = syl.id
+  document.addEventListener('mousemove', handleDragMove)
+  document.addEventListener('mouseup', handleDragEnd)
+}
+
+function handleDragMove(e: MouseEvent) {
+  if (!drag || ctx.zoom.value <= 0) return
+  const { syl, line, mode, origStart, origEnd, lowerBound, upperBound } = drag
+  const deltaPx = e.clientX - drag.startClientX
+  const deltaMs = (deltaPx / ctx.zoom.value) * 1000
+
+  if (mode === 'start') {
+    const newStart = Math.max(lowerBound, Math.min(origStart + deltaMs, origEnd - MIN_DURATION_MS))
+    syl.startTime = Math.round(newStart)
+  } else if (mode === 'end') {
+    const newEnd = Math.min(upperBound, Math.max(origEnd + deltaMs, origStart + MIN_DURATION_MS))
+    syl.endTime = Math.round(newEnd)
+  } else {
+    const duration = origEnd - origStart
+    const newStart = Math.max(lowerBound, Math.min(origStart + deltaMs, upperBound - duration))
+    syl.startTime = Math.round(newStart)
+    syl.endTime = Math.round(newStart + duration)
+  }
+
+  if (isFirstTimedSyl(line, syl)) line.startTime = syl.startTime
+  if (isLastTimedSyl(line, syl)) line.endTime = syl.endTime
+}
+
+function handleDragEnd() {
+  drag = null
+  draggingSylId.value = null
+  document.removeEventListener('mousemove', handleDragMove)
+  document.removeEventListener('mouseup', handleDragEnd)
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', handleDragMove)
+  document.removeEventListener('mouseup', handleDragEnd)
 })
 </script>
 
 <style lang="scss">
-.spectrogram-toolkit {
-  display: flex;
-  position: relative;
-  align-items: stretch;
-}
-
-.spectrogram-ruler-container {
-  position: relative;
-  width: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.spectrogram-ruler {
-  font-family: var(--font-monospace);
-}
-
-.spectrogram-container {
-  min-height: 120px;
-  position: relative;
-  overflow: hidden;
-  contain: strict;
-}
-
-.spectrogram-content {
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  will-change: transform;
-}
-
-.spectrogram-resize-handle {
+.syl-blocks-layer {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 0.3rem;
-  background-color: var(--p-primary-color);
-  z-index: 3;
-  opacity: 0;
-  transition: opacity 0.1s;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.syl-block {
+  position: absolute;
+  top: 0.4rem;
+  bottom: 0.4rem;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  background-color: color-mix(in srgb, var(--p-primary-color), transparent 78%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-primary-color), transparent 45%);
+  cursor: grab;
+  user-select: none;
+  overflow: hidden;
+  transition:
+    background-color 0.1s,
+    box-shadow 0.1s;
+
+  &.line-alt {
+    background-color: color-mix(in srgb, var(--p-primary-color), transparent 88%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-primary-color), transparent 60%);
+  }
+
   &:hover {
-    opacity: 0.7;
-    transition-delay: 0.3s;
+    background-color: color-mix(in srgb, var(--p-primary-color), transparent 65%);
   }
-  &:active {
-    opacity: 0.7;
-    transition: opacity 0.1s;
+
+  &.selected {
+    box-shadow: inset 0 0 0 1.5px var(--p-primary-color);
+    background-color: color-mix(in srgb, var(--p-primary-color), transparent 55%);
   }
-  &,
-  :root:has(&:active) * {
-    cursor: ns-resize !important;
+
+  &.active {
+    box-shadow: inset 0 0 0 1.5px var(--p-primary-color);
+    background-color: color-mix(in srgb, var(--p-primary-color), transparent 40%);
   }
-  &::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: -0.3rem;
+
+  &.dragging {
+    cursor: grabbing;
+    z-index: 1;
+  }
+}
+
+.syl-block-text {
+  pointer-events: none;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  padding: 0 0.6rem;
+  color: var(--p-text-color);
+  text-shadow: 0 0 4px var(--p-content-background);
+}
+
+.syl-block-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  &.left {
     left: 0;
   }
-}
-
-.spectrogram-block-toolbar {
-  position: absolute;
-  top: 0.3rem;
-  right: 0.3rem;
-  z-index: 4;
-  display: flex;
-  gap: 0.3rem;
-}
-
-.spectrogram-slider {
-  display: flex;
-  flex-direction: column;
-  padding: 0.5rem;
-  gap: 0.5rem;
-  align-items: center;
-  .p-slider.p-slider {
-    min-height: 0;
-    flex: 1;
-    margin: 0.8rem 0;
+  &.right {
+    right: 0;
   }
+  &:hover {
+    background-color: color-mix(in srgb, var(--p-primary-color), transparent 30%);
+  }
+}
+
+.syl-blocks-empty-tip {
+  pointer-events: none;
 }
 </style>

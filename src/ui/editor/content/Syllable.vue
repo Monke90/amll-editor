@@ -40,8 +40,6 @@
         class="csyl-input"
         v-model="inputModel"
         size="large"
-        :spellcheck="prefStore.spellCheckEnabled"
-        lang="en-US"
         @keydown="handleKeydown"
         @focus="handleFocus"
         @compositionend="hijackCompositionBackquote"

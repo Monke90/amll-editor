@@ -5,29 +5,6 @@
       <Button icon="pi pi-arrow-right-arrow-left" severity="secondary" />
       <Slider orientation="vertical" :min="0.5" :max="8" :step="0.5" v-model="gainModel" />
     </div>
-    <div class="spectrogram-block-toolbar">
-      <Button
-        icon="pi pi-th-large"
-        size="small"
-        v-tooltip="'Show syllable blocks'"
-        :severity="prefStore.spectrogramShowSyllableBlocks ? 'primary' : 'secondary'"
-        @click="prefStore.spectrogramShowSyllableBlocks = !prefStore.spectrogramShowSyllableBlocks"
-      />
-      <Button
-        v-if="prefStore.spectrogramShowSyllableBlocks"
-        :icon="prefStore.spectrogramBlockScope === 'all' ? 'pi pi-bars' : 'pi pi-align-left'"
-        size="small"
-        severity="secondary"
-        v-tooltip="
-          prefStore.spectrogramBlockScope === 'all'
-            ? 'Editing all lines — click to switch to selected line only'
-            : 'Editing selected line only — click to switch to all lines'
-        "
-        @click="
-          prefStore.spectrogramBlockScope = prefStore.spectrogramBlockScope === 'all' ? 'selected' : 'all'
-        "
-      />
-    </div>
     <div
       class="spectrogram-ruler-container"
       @wheel.prevent="handleWheel"
@@ -35,6 +12,29 @@
       @mouseenter="handleMouseEnter"
       @mouseleave="handleMouseLeave"
     >
+      <div class="spectrogram-block-toolbar">
+        <Button
+          icon="pi pi-th-large"
+          size="small"
+          v-tooltip="'Show syllable blocks'"
+          :severity="prefStore.spectrogramShowSyllableBlocks ? 'primary' : 'secondary'"
+          @click="prefStore.spectrogramShowSyllableBlocks = !prefStore.spectrogramShowSyllableBlocks"
+        />
+        <Button
+          v-if="prefStore.spectrogramShowSyllableBlocks"
+          :icon="prefStore.spectrogramBlockScope === 'all' ? 'pi pi-bars' : 'pi pi-align-left'"
+          size="small"
+          severity="secondary"
+          v-tooltip="
+            prefStore.spectrogramBlockScope === 'all'
+              ? 'Editing all lines — click to switch to selected line only'
+              : 'Editing selected line only — click to switch to all lines'
+          "
+          @click="
+            prefStore.spectrogramBlockScope = prefStore.spectrogramBlockScope === 'all' ? 'selected' : 'all'
+          "
+        />
+      </div>
       <Ruler
         :zoom="ctx.zoom.value"
         :scrollLeft="ctx.scrollLeft.value"
@@ -224,11 +224,12 @@ const { visibleTiles } = useSpectrogramTiles({
 }
 
 .spectrogram-block-toolbar {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  z-index: 4;
   display: flex;
-  flex-direction: column;
   gap: 0.3rem;
-  padding: 0.5rem 0.5rem 0.5rem 0;
-  align-items: center;
 }
 
 .spectrogram-slider {

@@ -5,6 +5,29 @@
       <Button icon="pi pi-arrow-right-arrow-left" severity="secondary" />
       <Slider orientation="vertical" :min="0.5" :max="8" :step="0.5" v-model="gainModel" />
     </div>
+    <div class="spectrogram-block-toolbar">
+      <Button
+        icon="pi pi-th-large"
+        size="small"
+        v-tooltip="'Show syllable blocks'"
+        :severity="prefStore.spectrogramShowSyllableBlocks ? 'primary' : 'secondary'"
+        @click="prefStore.spectrogramShowSyllableBlocks = !prefStore.spectrogramShowSyllableBlocks"
+      />
+      <Button
+        v-if="prefStore.spectrogramShowSyllableBlocks"
+        :icon="prefStore.spectrogramBlockScope === 'all' ? 'pi pi-bars' : 'pi pi-align-left'"
+        size="small"
+        severity="secondary"
+        v-tooltip="
+          prefStore.spectrogramBlockScope === 'all'
+            ? 'Editing all lines — click to switch to selected line only'
+            : 'Editing selected line only — click to switch to all lines'
+        "
+        @click="
+          prefStore.spectrogramBlockScope = prefStore.spectrogramBlockScope === 'all' ? 'selected' : 'all'
+        "
+      />
+    </div>
     <div
       class="spectrogram-ruler-container"
       @wheel.prevent="handleWheel"
@@ -32,6 +55,8 @@
         >
           <Tile v-for="tile in visibleTiles" :key="tile.id" v-bind="tile" />
         </div>
+
+        <SyllableBlocks />
 
         <EmptyTip
           v-if="!audioEngine.audioBuffer"
@@ -61,6 +86,7 @@ import { useSpectrogramTiles } from '@core/spectrogram/useSpectrogramTiles'
 import { usePrefStore } from '@states/stores'
 
 import Ruler from './Ruler.vue'
+import SyllableBlocks from './SyllableBlocks.vue'
 import Tile from './Tile.vue'
 import EmptyTip from '@ui/components/EmptyTip.vue'
 import { Button, Slider } from 'primevue'

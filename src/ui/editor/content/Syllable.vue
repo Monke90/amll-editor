@@ -40,12 +40,14 @@
         class="csyl-input"
         v-model="inputModel"
         size="large"
+        :spellcheck="prefStore.spellCheckEnabled"
         @keydown="handleKeydown"
         @focus="handleFocus"
         @compositionend="hijackCompositionBackquote"
         @blur="flushInputModel"
         data-syllable-field
         :name="`syl/${props.syllable.id}`"
+      />
       />
     </div>
     <div class="csyl-roman-shell" v-if="prefStore.sylRomanEnabled">

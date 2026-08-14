@@ -2,31 +2,30 @@
   <div class="spectrogram-toolkit">
     <div class="spectrogram-resize-handle" v-bind="resizeHandleProps"></div>
     <div class="spectrogram-slider">
-      <Button icon="pi pi-arrow-right-arrow-left" severity="secondary" />
+      <div class="spectrogram-block-toolbar">
+        <Button
+          icon="pi pi-th-large"
+          size="small"
+          v-tooltip="'Show syllable blocks'"
+          :severity="prefStore.spectrogramShowSyllableBlocks ? 'primary' : 'secondary'"
+          @click="prefStore.spectrogramShowSyllableBlocks = !prefStore.spectrogramShowSyllableBlocks"
+        />
+        <Button
+          v-if="prefStore.spectrogramShowSyllableBlocks"
+          :icon="prefStore.spectrogramBlockScope === 'all' ? 'pi pi-bars' : 'pi pi-align-left'"
+          size="small"
+          severity="secondary"
+          v-tooltip="
+            prefStore.spectrogramBlockScope === 'all'
+              ? 'Editing all lines — click to switch to selected line only'
+              : 'Editing selected line only — click to switch to all lines'
+          "
+          @click="
+            prefStore.spectrogramBlockScope = prefStore.spectrogramBlockScope === 'all' ? 'selected' : 'all'
+          "
+        />
+      </div>
       <Slider orientation="vertical" :min="0.5" :max="8" :step="0.5" v-model="gainModel" />
-    </div>
-    <div class="spectrogram-block-toolbar">
-      <Button
-        icon="pi pi-th-large"
-        size="small"
-        v-tooltip="'Show syllable blocks'"
-        :severity="prefStore.spectrogramShowSyllableBlocks ? 'primary' : 'secondary'"
-        @click="prefStore.spectrogramShowSyllableBlocks = !prefStore.spectrogramShowSyllableBlocks"
-      />
-      <Button
-        v-if="prefStore.spectrogramShowSyllableBlocks"
-        :icon="prefStore.spectrogramBlockScope === 'all' ? 'pi pi-bars' : 'pi pi-align-left'"
-        size="small"
-        severity="secondary"
-        v-tooltip="
-          prefStore.spectrogramBlockScope === 'all'
-            ? 'Editing all lines — click to switch to selected line only'
-            : 'Editing selected line only — click to switch to all lines'
-        "
-        @click="
-          prefStore.spectrogramBlockScope = prefStore.spectrogramBlockScope === 'all' ? 'selected' : 'all'
-        "
-      />
     </div>
     <div
       class="spectrogram-ruler-container"
@@ -221,6 +220,13 @@ const { visibleTiles } = useSpectrogramTiles({
     bottom: -0.3rem;
     left: 0;
   }
+}
+
+.spectrogram-block-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem;
 }
 
 .spectrogram-slider {

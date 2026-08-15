@@ -12,22 +12,23 @@
         selected: runtimeStore.selectedSyllables.has(entry.syl),
         active: isActiveSyl(entry.syl),
         'line-alt': entry.lineIndex % 2 === 1,
-        dragging: draggingSylId === entry.syl.id,
+        dragging: draggingKey === entry.syl.id,
       }"
       :style="blockStyle(entry.syl)"
       :title="entry.syl.text"
-      @mousedown.stop="handleBlockMouseDown($event, entry.line, entry.syl, 'move')"
+      @mousedown.stop="handleBlockMouseDown($event, entry.line, entry.syl)"
     >
-      <div
-        class="syl-block-handle left"
-        @mousedown.stop="handleBlockMouseDown($event, entry.line, entry.syl, 'start')"
-      ></div>
       <span class="syl-block-text">{{ entry.syl.text }}</span>
-      <div
-        class="syl-block-handle right"
-        @mousedown.stop="handleBlockMouseDown($event, entry.line, entry.syl, 'end')"
-      ></div>
     </div>
+
+    <div
+      v-for="h in visibleHandles"
+      :key="h.key"
+      class="syl-block-handle"
+      :class="{ dragging: draggingKey === h.key }"
+      :style="{ left: `${h.x}px` }"
+      @mousedown.stop="handleHandleMouseDown($event, h)"
+    ></div>
   </div>
 </template>
 
@@ -47,6 +48,11 @@ const prefStore = usePrefStore()
 
 const MIN_DURATION_MS = 30
 const SNAP_PX = 8
+const TOUCH_EPS_MS = 1
+
+function textSyls(line: LyricLine): LyricSyllable[] {
+  return line.syllables.filter((s) => s.text.trim())
+}
 
 const scopeLines = computed<LyricLine[]>(() => {
   if (prefStore.spectrogramBlockScope === 'all') return coreStore.lyricLines
@@ -60,6 +66,10 @@ interface BlockEntry {
   syl: LyricSyllable
 }
 
+function inView(startMs: number, endMs: number, bufferedStart: number, bufferedEnd: number) {
+  return endMs >= bufferedStart && startMs <= bufferedEnd
+}
+
 const visibleEntries = computed<BlockEntry[]>(() => {
   if (!prefStore.spectrogramShowSyllableBlocks) return []
   const bufferMs = 1000
@@ -68,13 +78,87 @@ const visibleEntries = computed<BlockEntry[]>(() => {
   const entries: BlockEntry[] = []
   for (const line of scopeLines.value) {
     const lineIndex = coreStore.lyricLines.indexOf(line)
-    for (const syl of line.syllables) {
-      if (!syl.text.trim()) continue
-      if (syl.endTime < startMs || syl.startTime > endMs) continue
+    for (const syl of textSyls(line)) {
+      if (!inView(syl.startTime, syl.endTime, startMs, endMs)) continue
       entries.push({ line, lineIndex, syl })
     }
   }
   return entries
+})
+
+interface HandleEntry {
+  key: string
+  x: number
+  kind: 'boundary' | 'edge-start' | 'edge-end'
+  line: LyricLine
+  leftSyl: LyricSyllable | null
+  rightSyl: LyricSyllable | null
+}
+
+const visibleHandles = computed<HandleEntry[]>(() => {
+  if (!prefStore.spectrogramShowSyllableBlocks) return []
+  const bufferMs = 1000
+  const startMs = ctx.viewStartTime.value * 1000 - bufferMs
+  const endMs = ctx.viewEndTime.value * 1000 + bufferMs
+  const handles: HandleEntry[] = []
+  for (const line of scopeLines.value) {
+    const syls = textSyls(line)
+    for (let i = 0; i <= syls.length; i++) {
+      const left = i > 0 ? syls[i - 1]! : null
+      const right = i < syls.length ? syls[i]! : null
+      const posMs = right ? right.startTime : left ? left.endTime : null
+      if (posMs === null || posMs < startMs || posMs > endMs) continue
+      if (left && right) {
+        const touching = Math.abs(left.endTime - right.startTime) <= TOUCH_EPS_MS
+        if (touching) {
+          handles.push({
+            key: `b-${left.id}-${right.id}`,
+            x: msToPx(left.endTime),
+            kind: 'boundary',
+            line,
+            leftSyl: left,
+            rightSyl: right,
+          })
+        } else {
+          handles.push({
+            key: `${left.id}-end`,
+            x: msToPx(left.endTime),
+            kind: 'edge-end',
+            line,
+            leftSyl: left,
+            rightSyl: null,
+          })
+          handles.push({
+            key: `${right.id}-start`,
+            x: msToPx(right.startTime),
+            kind: 'edge-start',
+            line,
+            leftSyl: null,
+            rightSyl: right,
+          })
+        }
+      } else if (!left && right) {
+        handles.push({
+          key: `${right.id}-start`,
+          x: msToPx(right.startTime),
+          kind: 'edge-start',
+          line,
+          leftSyl: null,
+          rightSyl: right,
+        })
+      } else if (left && !right) {
+        handles.push({
+          key: `${left.id}-end`,
+          x: msToPx(left.endTime),
+          kind: 'edge-end',
+          line,
+          leftSyl: left,
+          rightSyl: null,
+        })
+      }
+    }
+  }
+  return handles
 })
 
 function isActiveSyl(syl: LyricSyllable) {
@@ -106,116 +190,176 @@ function syncLineBounds(line: LyricLine) {
   if (lastTimed) line.endTime = lastTimed.endTime
 }
 
-type DragMode = 'move' | 'start' | 'end'
+type DragMode = 'move' | 'boundary' | 'edge-start' | 'edge-end'
 
 interface DragState {
   mode: DragMode
+  key: string
   line: LyricLine
-  idx: number
+  syl?: LyricSyllable
+  leftSyl?: LyricSyllable
+  rightSyl?: LyricSyllable
+  neighborLeft?: LyricSyllable | null
+  neighborRight?: LyricSyllable | null
   startClientX: number
-  origTimes: { start: number; end: number }[]
+  origTimes: Map<string, { start: number; end: number }>
 }
 
 let drag: DragState | null = null
-const draggingSylId = ref<string | null>(null)
+const draggingKey = ref<string | null>(null)
 
-function handleBlockMouseDown(e: MouseEvent, line: LyricLine, syl: LyricSyllable, mode: DragMode) {
+function snapshotTimes(...syls: (LyricSyllable | null | undefined)[]) {
+  const map = new Map<string, { start: number; end: number }>()
+  for (const s of syls) {
+    if (s) map.set(s.id, { start: s.startTime, end: s.endTime })
+  }
+  return map
+}
+
+function handleBlockMouseDown(e: MouseEvent, line: LyricLine, syl: LyricSyllable) {
   if (e.button !== 0) return
   e.preventDefault()
   runtimeStore.selectLineSyl(line, syl)
 
-  const idx = line.syllables.indexOf(syl)
+  const syls = textSyls(line)
+  const idx = syls.indexOf(syl)
+  const neighborLeft = idx > 0 ? syls[idx - 1]! : null
+  const neighborRight = idx < syls.length - 1 ? syls[idx + 1]! : null
+
   drag = {
-    mode,
+    mode: 'move',
+    key: syl.id,
     line,
-    idx,
+    syl,
+    neighborLeft,
+    neighborRight,
     startClientX: e.clientX,
-    origTimes: line.syllables.map((s) => ({ start: s.startTime, end: s.endTime })),
+    origTimes: snapshotTimes(syl, neighborLeft, neighborRight),
   }
-  draggingSylId.value = syl.id
+  draggingKey.value = syl.id
   document.addEventListener('mousemove', handleDragMove)
   document.addEventListener('mouseup', handleDragEnd)
 }
 
+function handleHandleMouseDown(e: MouseEvent, h: HandleEntry) {
+  if (e.button !== 0) return
+  e.preventDefault()
+  runtimeStore.selectLineSyl(h.line, h.leftSyl ?? h.rightSyl!)
+
+  if (h.kind === 'boundary') {
+    drag = {
+      mode: 'boundary',
+      key: h.key,
+      line: h.line,
+      leftSyl: h.leftSyl!,
+      rightSyl: h.rightSyl!,
+      startClientX: e.clientX,
+      origTimes: snapshotTimes(h.leftSyl, h.rightSyl),
+    }
+  } else {
+    const syl = (h.kind === 'edge-end' ? h.leftSyl : h.rightSyl)!
+    drag = {
+      mode: h.kind,
+      key: h.key,
+      line: h.line,
+      syl,
+      neighborLeft: h.kind === 'edge-start' ? null : undefined,
+      neighborRight: h.kind === 'edge-end' ? null : undefined,
+      startClientX: e.clientX,
+      origTimes: snapshotTimes(syl),
+    }
+  }
+  draggingKey.value = h.key
+  document.addEventListener('mousemove', handleDragMove)
+  document.addEventListener('mouseup', handleDragEnd)
+}
+
+function liveNeighbors(line: LyricLine, syl: LyricSyllable) {
+  const syls = textSyls(line)
+  const idx = syls.indexOf(syl)
+  return {
+    prev: idx > 0 ? syls[idx - 1]! : null,
+    next: idx < syls.length - 1 ? syls[idx + 1]! : null,
+  }
+}
+
 function handleDragMove(e: MouseEvent) {
   if (!drag || ctx.zoom.value <= 0) return
-  const { line, mode, idx, origTimes } = drag
-  const syls = line.syllables
-  if (syls.length !== origTimes.length) return
   const deltaPx = e.clientX - drag.startClientX
   const deltaMs = (deltaPx / ctx.zoom.value) * 1000
   const durationMs = ctx.duration.value * 1000
   const snap = snapMs()
 
-  if (mode === 'move') {
-    if (deltaMs > 0) {
-      let prevNewEnd = origTimes[idx]!.end + deltaMs
-      syls[idx]!.startTime = Math.round(origTimes[idx]!.start + deltaMs)
-      syls[idx]!.endTime = Math.round(prevNewEnd)
-      for (let j = idx + 1; j < syls.length; j++) {
-        const origJ = origTimes[j]!
-        const gap = origJ.start - prevNewEnd
-        if (gap >= snap) break
-        const dur = origJ.end - origJ.start
-        const newStartJ = prevNewEnd
-        syls[j]!.startTime = Math.round(newStartJ)
-        syls[j]!.endTime = Math.round(newStartJ + dur)
-        prevNewEnd = newStartJ + dur
-      }
-    } else if (deltaMs < 0) {
-      let prevNewStart = origTimes[idx]!.start + deltaMs
-      syls[idx]!.startTime = Math.round(prevNewStart)
-      syls[idx]!.endTime = Math.round(origTimes[idx]!.end + deltaMs)
-      for (let j = idx - 1; j >= 0; j--) {
-        const origJ = origTimes[j]!
-        const gap = prevNewStart - origJ.end
-        if (gap >= snap) break
-        const dur = origJ.end - origJ.start
-        const newEndJ = prevNewStart
-        syls[j]!.endTime = Math.round(newEndJ)
-        syls[j]!.startTime = Math.round(newEndJ - dur)
-        prevNewStart = newEndJ - dur
-      }
-    }
-    if (syls[0]!.startTime < 0) {
-      const fix = -syls[0]!.startTime
-      for (const s of syls) {
-        s.startTime += fix
-        s.endTime += fix
-      }
-    }
-    const lastSyl = syls[syls.length - 1]!
-    if (lastSyl.endTime > durationMs) {
-      const fix = lastSyl.endTime - durationMs
-      for (const s of syls) {
-        s.startTime -= fix
-        s.endTime -= fix
-      }
-    }
-  } else if (mode === 'start') {
-    const prev = idx > 0 ? syls[idx - 1] : null
-    const origSyl = origTimes[idx]!
-    const lowerHardBound = prev ? origTimes[idx - 1]!.start + MIN_DURATION_MS : 0
-    let newStart = origSyl.start + deltaMs
-    newStart = Math.max(lowerHardBound, Math.min(newStart, origSyl.end - MIN_DURATION_MS))
-    syls[idx]!.startTime = Math.round(newStart)
-    if (prev) prev.endTime = Math.round(newStart)
-  } else if (mode === 'end') {
-    const next = idx < syls.length - 1 ? syls[idx + 1] : null
-    const origSyl = origTimes[idx]!
-    const upperHardBound = next ? origTimes[idx + 1]!.end - MIN_DURATION_MS : durationMs
-    let newEnd = origSyl.end + deltaMs
-    newEnd = Math.min(upperHardBound, Math.max(newEnd, origSyl.start + MIN_DURATION_MS))
-    syls[idx]!.endTime = Math.round(newEnd)
-    if (next) next.startTime = Math.round(newEnd)
-  }
+  if (drag.mode === 'move') {
+    const { line, syl } = drag
+    const orig = drag.origTimes.get(syl!.id)!
+    const { prev, next } = liveNeighbors(line, syl!)
+    const prevOrig = drag.origTimes.get(prev?.id ?? '')
+    const nextOrig = drag.origTimes.get(next?.id ?? '')
+    const prevTouching = prev && prevOrig ? Math.abs(prevOrig.end - orig.start) <= TOUCH_EPS_MS : false
+    const nextTouching = next && nextOrig ? Math.abs(orig.end - nextOrig.start) <= TOUCH_EPS_MS : false
 
-  syncLineBounds(line)
+    let lowerDelta = -Infinity
+    let upperDelta = Infinity
+    if (prev) {
+      if (prevTouching && prevOrig) lowerDelta = prevOrig.start + MIN_DURATION_MS - orig.start
+      else lowerDelta = prev.endTime - orig.start
+    } else {
+      lowerDelta = -orig.start
+    }
+    if (next) {
+      if (nextTouching && nextOrig) upperDelta = nextOrig.end - MIN_DURATION_MS - orig.end
+      else upperDelta = next.startTime - orig.end
+    } else {
+      upperDelta = durationMs - orig.end
+    }
+
+    const d = Math.max(lowerDelta, Math.min(deltaMs, upperDelta))
+    const newStart = Math.round(orig.start + d)
+    const newEnd = Math.round(orig.end + d)
+    syl!.startTime = newStart
+    syl!.endTime = newEnd
+    if (prevTouching && prev) prev.endTime = newStart
+    if (nextTouching && next) next.startTime = newEnd
+
+    syncLineBounds(line)
+  } else if (drag.mode === 'boundary') {
+    const { line, leftSyl, rightSyl } = drag
+    const leftOrig = drag.origTimes.get(leftSyl!.id)!
+    const rightOrig = drag.origTimes.get(rightSyl!.id)!
+    let newBoundary = leftOrig.end + deltaMs
+    const minBoundary = leftOrig.start + MIN_DURATION_MS
+    const maxBoundary = rightOrig.end - MIN_DURATION_MS
+    newBoundary = Math.round(Math.max(minBoundary, Math.min(newBoundary, maxBoundary)))
+    leftSyl!.endTime = newBoundary
+    rightSyl!.startTime = newBoundary
+    syncLineBounds(line)
+  } else if (drag.mode === 'edge-start') {
+    const { line, syl } = drag
+    const orig = drag.origTimes.get(syl!.id)!
+    const { prev } = liveNeighbors(line, syl!)
+    let newStart = orig.start + deltaMs
+    const lowerBound = prev ? prev.endTime : 0
+    newStart = Math.max(lowerBound, Math.min(newStart, orig.end - MIN_DURATION_MS))
+    if (prev && newStart - prev.endTime < snap) newStart = prev.endTime
+    syl!.startTime = Math.round(newStart)
+    syncLineBounds(line)
+  } else if (drag.mode === 'edge-end') {
+    const { line, syl } = drag
+    const orig = drag.origTimes.get(syl!.id)!
+    const { next } = liveNeighbors(line, syl!)
+    let newEnd = orig.end + deltaMs
+    const upperBound = next ? next.startTime : durationMs
+    newEnd = Math.min(upperBound, Math.max(newEnd, orig.start + MIN_DURATION_MS))
+    if (next && next.startTime - newEnd < snap) newEnd = next.startTime
+    syl!.endTime = Math.round(newEnd)
+    syncLineBounds(line)
+  }
 }
 
 function handleDragEnd() {
   drag = null
-  draggingSylId.value = null
+  draggingKey.value = null
   document.removeEventListener('mousemove', handleDragMove)
   document.removeEventListener('mouseup', handleDragEnd)
 }
@@ -291,19 +435,31 @@ onUnmounted(() => {
 
 .syl-block-handle {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 3px;
+  top: 0.4rem;
+  bottom: 0.4rem;
+  width: 8px;
+  margin-left: -4px;
+  pointer-events: auto;
   cursor: ew-resize;
-  &.left {
-    left: 0;
-  }
-  &.right {
-    right: 0;
-  }
-  &:hover,
-  &:active {
+  z-index: 3;
+  &::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    transform: translateX(-50%);
     background-color: color-mix(in srgb, var(--p-primary-color), transparent 20%);
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+  &:hover::after,
+  &.dragging::after {
+    opacity: 1;
+  }
+  &.dragging {
+    z-index: 4;
   }
 }
 </style>

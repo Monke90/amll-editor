@@ -60,7 +60,7 @@ export const getDefaultPref = (): PreferenceSchema => ({
   hideTranslateRoman: false,
   spectrogramColor: 'icyBlue',
   spectrogramShowSyllableBlocks: false,
-  spectrogramBlockScope: 'selected',
+  spectrogramBlockScope: 'all',
   themeMode: 'system',
   themeAccent: 'emerald',
   spellCheckEnabled: false,

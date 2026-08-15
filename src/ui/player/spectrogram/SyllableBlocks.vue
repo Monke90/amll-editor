@@ -28,14 +28,6 @@
         @mousedown.stop="handleBlockMouseDown($event, entry.line, entry.syl, 'end')"
       ></div>
     </div>
-    <EmptyTip
-      v-if="prefStore.spectrogramBlockScope === 'selected' && scopeLines.length === 0"
-      class="syl-blocks-empty-tip"
-      icon="pi pi-arrows-h"
-      title="No line selected"
-      tip="Select a lyric line to adjust its syllable timing here, or switch to All lines"
-      compact
-    />
   </div>
 </template>
 
@@ -48,7 +40,6 @@ import type { LyricLine, LyricSyllable } from '@core/types'
 
 import { useCoreStore, usePrefStore, useRuntimeStore } from '@states/stores'
 
-import EmptyTip from '@ui/components/EmptyTip.vue'
 
 const ctx = useSpectrogramContext()
 const coreStore = useCoreStore()

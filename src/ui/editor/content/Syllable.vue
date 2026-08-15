@@ -47,7 +47,6 @@
         data-syllable-field
         :name="`syl/${props.syllable.id}`"
       />
-      />
     </div>
     <div class="csyl-roman-shell" v-if="prefStore.sylRomanEnabled">
       <div class="csyl-roman-widthcontrol csyl-roman-input-alike">

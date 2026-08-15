@@ -175,7 +175,8 @@ function msToPx(ms: number) {
 
 function blockStyle(syl: LyricSyllable) {
   const left = msToPx(syl.startTime)
-  const width = Math.max(3, msToPx(syl.endTime) - left)
+  // 稍微多渲染 1px 宽度，盖住相邻方块之间因子像素取整产生的发丝间隙
+  const width = Math.max(3, msToPx(syl.endTime) - left) + 1
   return { left: `${left}px`, width: `${width}px` }
 }
 
@@ -391,17 +392,13 @@ onUnmounted(() => {
   justify-content: center;
   border-radius: 3px;
   background-color: color-mix(in srgb, var(--p-primary-color), transparent 78%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-primary-color), transparent 45%);
   cursor: grab;
   user-select: none;
   overflow: hidden;
-  transition:
-    background-color 0.1s,
-    box-shadow 0.1s;
+  transition: background-color 0.1s;
 
   &.line-alt {
     background-color: color-mix(in srgb, var(--p-primary-color), transparent 88%);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p-primary-color), transparent 60%);
   }
 
   &:hover {

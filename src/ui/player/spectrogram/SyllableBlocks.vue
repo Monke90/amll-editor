@@ -40,13 +40,13 @@ import type { LyricLine, LyricSyllable } from '@core/types'
 
 import { useCoreStore, usePrefStore, useRuntimeStore } from '@states/stores'
 
-
 const ctx = useSpectrogramContext()
 const coreStore = useCoreStore()
 const runtimeStore = useRuntimeStore()
 const prefStore = usePrefStore()
 
 const MIN_DURATION_MS = 30
+const SNAP_PX = 8
 
 const scopeLines = computed<LyricLine[]>(() => {
   if (prefStore.spectrogramBlockScope === 'all') return coreStore.lyricLines
@@ -95,16 +95,15 @@ function blockStyle(syl: LyricSyllable) {
   return { left: `${left}px`, width: `${width}px` }
 }
 
-function isFirstTimedSyl(line: LyricLine, syl: LyricSyllable) {
-  for (const s of line.syllables) if (s.text.trim()) return s === syl
-  return false
+function snapMs() {
+  return ctx.zoom.value > 0 ? (SNAP_PX / ctx.zoom.value) * 1000 : 0
 }
-function isLastTimedSyl(line: LyricLine, syl: LyricSyllable) {
-  for (let i = line.syllables.length - 1; i >= 0; i--) {
-    const s = line.syllables[i]!
-    if (s.text.trim()) return s === syl
-  }
-  return false
+
+function syncLineBounds(line: LyricLine) {
+  const firstTimed = line.syllables.find((s) => s.text.trim())
+  const lastTimed = [...line.syllables].reverse().find((s) => s.text.trim())
+  if (firstTimed) line.startTime = firstTimed.startTime
+  if (lastTimed) line.endTime = lastTimed.endTime
 }
 
 type DragMode = 'move' | 'start' | 'end'
@@ -112,46 +111,26 @@ type DragMode = 'move' | 'start' | 'end'
 interface DragState {
   mode: DragMode
   line: LyricLine
-  syl: LyricSyllable
+  idx: number
   startClientX: number
-  origStart: number
-  origEnd: number
-  lowerBound: number
-  upperBound: number
+  origTimes: { start: number; end: number }[]
 }
 
 let drag: DragState | null = null
 const draggingSylId = ref<string | null>(null)
 
-function neighborBounds(line: LyricLine, syl: LyricSyllable) {
-  const idx = line.syllables.indexOf(syl)
-  const prev = line.syllables[idx - 1]
-  const next = line.syllables[idx + 1]
-  const lowerBound = prev ? prev.endTime : 0
-  const upperBound = next ? next.startTime : ctx.duration.value * 1000
-  return { lowerBound, upperBound }
-}
-
-function handleBlockMouseDown(
-  e: MouseEvent,
-  line: LyricLine,
-  syl: LyricSyllable,
-  mode: DragMode,
-) {
+function handleBlockMouseDown(e: MouseEvent, line: LyricLine, syl: LyricSyllable, mode: DragMode) {
   if (e.button !== 0) return
   e.preventDefault()
   runtimeStore.selectLineSyl(line, syl)
 
-  const { lowerBound, upperBound } = neighborBounds(line, syl)
+  const idx = line.syllables.indexOf(syl)
   drag = {
     mode,
     line,
-    syl,
+    idx,
     startClientX: e.clientX,
-    origStart: syl.startTime,
-    origEnd: syl.endTime,
-    lowerBound,
-    upperBound,
+    origTimes: line.syllables.map((s) => ({ start: s.startTime, end: s.endTime })),
   }
   draggingSylId.value = syl.id
   document.addEventListener('mousemove', handleDragMove)
@@ -160,25 +139,78 @@ function handleBlockMouseDown(
 
 function handleDragMove(e: MouseEvent) {
   if (!drag || ctx.zoom.value <= 0) return
-  const { syl, line, mode, origStart, origEnd, lowerBound, upperBound } = drag
+  const { line, mode, idx, origTimes } = drag
+  const syls = line.syllables
+  if (syls.length !== origTimes.length) return
   const deltaPx = e.clientX - drag.startClientX
   const deltaMs = (deltaPx / ctx.zoom.value) * 1000
+  const durationMs = ctx.duration.value * 1000
+  const snap = snapMs()
 
-  if (mode === 'start') {
-    const newStart = Math.max(lowerBound, Math.min(origStart + deltaMs, origEnd - MIN_DURATION_MS))
-    syl.startTime = Math.round(newStart)
+  if (mode === 'move') {
+    if (deltaMs > 0) {
+      let prevNewEnd = origTimes[idx]!.end + deltaMs
+      syls[idx]!.startTime = Math.round(origTimes[idx]!.start + deltaMs)
+      syls[idx]!.endTime = Math.round(prevNewEnd)
+      for (let j = idx + 1; j < syls.length; j++) {
+        const origJ = origTimes[j]!
+        const gap = origJ.start - prevNewEnd
+        if (gap >= snap) break
+        const dur = origJ.end - origJ.start
+        const newStartJ = prevNewEnd
+        syls[j]!.startTime = Math.round(newStartJ)
+        syls[j]!.endTime = Math.round(newStartJ + dur)
+        prevNewEnd = newStartJ + dur
+      }
+    } else if (deltaMs < 0) {
+      let prevNewStart = origTimes[idx]!.start + deltaMs
+      syls[idx]!.startTime = Math.round(prevNewStart)
+      syls[idx]!.endTime = Math.round(origTimes[idx]!.end + deltaMs)
+      for (let j = idx - 1; j >= 0; j--) {
+        const origJ = origTimes[j]!
+        const gap = prevNewStart - origJ.end
+        if (gap >= snap) break
+        const dur = origJ.end - origJ.start
+        const newEndJ = prevNewStart
+        syls[j]!.endTime = Math.round(newEndJ)
+        syls[j]!.startTime = Math.round(newEndJ - dur)
+        prevNewStart = newEndJ - dur
+      }
+    }
+    if (syls[0]!.startTime < 0) {
+      const fix = -syls[0]!.startTime
+      for (const s of syls) {
+        s.startTime += fix
+        s.endTime += fix
+      }
+    }
+    const lastSyl = syls[syls.length - 1]!
+    if (lastSyl.endTime > durationMs) {
+      const fix = lastSyl.endTime - durationMs
+      for (const s of syls) {
+        s.startTime -= fix
+        s.endTime -= fix
+      }
+    }
+  } else if (mode === 'start') {
+    const prev = idx > 0 ? syls[idx - 1] : null
+    const origSyl = origTimes[idx]!
+    const lowerHardBound = prev ? origTimes[idx - 1]!.start + MIN_DURATION_MS : 0
+    let newStart = origSyl.start + deltaMs
+    newStart = Math.max(lowerHardBound, Math.min(newStart, origSyl.end - MIN_DURATION_MS))
+    syls[idx]!.startTime = Math.round(newStart)
+    if (prev) prev.endTime = Math.round(newStart)
   } else if (mode === 'end') {
-    const newEnd = Math.min(upperBound, Math.max(origEnd + deltaMs, origStart + MIN_DURATION_MS))
-    syl.endTime = Math.round(newEnd)
-  } else {
-    const duration = origEnd - origStart
-    const newStart = Math.max(lowerBound, Math.min(origStart + deltaMs, upperBound - duration))
-    syl.startTime = Math.round(newStart)
-    syl.endTime = Math.round(newStart + duration)
+    const next = idx < syls.length - 1 ? syls[idx + 1] : null
+    const origSyl = origTimes[idx]!
+    const upperHardBound = next ? origTimes[idx + 1]!.end - MIN_DURATION_MS : durationMs
+    let newEnd = origSyl.end + deltaMs
+    newEnd = Math.min(upperHardBound, Math.max(newEnd, origSyl.start + MIN_DURATION_MS))
+    syls[idx]!.endTime = Math.round(newEnd)
+    if (next) next.startTime = Math.round(newEnd)
   }
 
-  if (isFirstTimedSyl(line, syl)) line.startTime = syl.startTime
-  if (isLastTimedSyl(line, syl)) line.endTime = syl.endTime
+  syncLineBounds(line)
 }
 
 function handleDragEnd() {
@@ -261,7 +293,7 @@ onUnmounted(() => {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 3px;
   cursor: ew-resize;
   &.left {
     left: 0;
@@ -269,12 +301,9 @@ onUnmounted(() => {
   &.right {
     right: 0;
   }
-  &:hover {
-    background-color: color-mix(in srgb, var(--p-primary-color), transparent 30%);
+  &:hover,
+  &:active {
+    background-color: color-mix(in srgb, var(--p-primary-color), transparent 20%);
   }
-}
-
-.syl-blocks-empty-tip {
-  pointer-events: none;
 }
 </style>

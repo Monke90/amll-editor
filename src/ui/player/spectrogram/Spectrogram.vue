@@ -8,7 +8,8 @@
           size="small"
           v-tooltip="'Show syllable blocks'"
           :severity="prefStore.spectrogramShowSyllableBlocks ? 'primary' : 'secondary'"
-          @click="prefStore.spectrogramShowSyllableBlocks = !prefStore.spectrogramShowSyllableBlocks"
+          :class="{ 'no-audio-block': !audioEngine.audioBuffer, 'flash-error': noAudioFlash }"
+          @click="handleToggleBlocksClick"
         />
         <Button
           v-if="prefStore.spectrogramShowSyllableBlocks"
@@ -159,6 +160,24 @@ const { visibleTiles } = useSpectrogramTiles({
   audioBuffer: audioBufferComputed,
 })
 
+// 无音频时点击「显示音节块」按钮，闪红提示而不是切换
+const noAudioFlash = ref(false)
+let noAudioFlashTimeout: ReturnType<typeof setTimeout> | null = null
+function handleToggleBlocksClick() {
+  if (!audioEngine.audioBuffer) {
+    noAudioFlash.value = false
+    requestAnimationFrame(() => {
+      noAudioFlash.value = true
+      if (noAudioFlashTimeout) clearTimeout(noAudioFlashTimeout)
+      noAudioFlashTimeout = setTimeout(() => {
+        noAudioFlash.value = false
+      }, 1000)
+    })
+    return
+  }
+  prefStore.spectrogramShowSyllableBlocks = !prefStore.spectrogramShowSyllableBlocks
+}
+
 // 点击/拖动标尺以跳转到对应时间点
 let seekingViaRuler = false
 function rulerXToMs(clientX: number, rect: DOMRect) {
@@ -261,6 +280,25 @@ function handleRulerMouseDown(e: MouseEvent) {
   flex-direction: column;
   gap: 0.3rem;
   margin-bottom: 0.3rem;
+
+  .no-audio-block {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .flash-error {
+    animation: block-toolbar-flash-error 0.6s ease;
+  }
+}
+
+@keyframes block-toolbar-flash-error {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  30% {
+    box-shadow: 0 0 0 2px #ef4444;
+  }
 }
 
 .spectrogram-slider {

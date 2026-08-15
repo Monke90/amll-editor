@@ -34,12 +34,14 @@
       @mouseenter="handleMouseEnter"
       @mouseleave="handleMouseLeave"
     >
-      <Ruler
-        :zoom="ctx.zoom.value"
-        :scrollLeft="ctx.scrollLeft.value"
-        :duration="audioEngine.lengthComputed.value / 1000"
-        :width="containerWidth"
-      />
+      <div class="spectrogram-ruler-clickable" @mousedown="handleRulerMouseDown">
+        <Ruler
+          :zoom="ctx.zoom.value"
+          :scrollLeft="ctx.scrollLeft.value"
+          :duration="audioEngine.lengthComputed.value / 1000"
+          :width="containerWidth"
+        />
+      </div>
       <div
         class="spectrogram-container"
         ref="containerEl"
@@ -55,6 +57,7 @@
           <Tile v-for="tile in visibleTiles" :key="tile.id" v-bind="tile" />
         </div>
 
+        <Playhead />
         <SyllableBlocks />
 
         <EmptyTip
@@ -84,6 +87,7 @@ import { useSpectrogramTiles } from '@core/spectrogram/useSpectrogramTiles'
 
 import { usePrefStore } from '@states/stores'
 
+import Playhead from './Playhead.vue'
 import Ruler from './Ruler.vue'
 import SyllableBlocks from './SyllableBlocks.vue'
 import Tile from './Tile.vue'
@@ -154,6 +158,32 @@ const { visibleTiles } = useSpectrogramTiles({
   ctx,
   audioBuffer: audioBufferComputed,
 })
+
+// 点击/拖动标尺以跳转到对应时间点
+let seekingViaRuler = false
+function rulerXToMs(clientX: number, rect: DOMRect) {
+  const x = clientX - rect.left
+  const ms = ((x + ctx.scrollLeft.value) / ctx.zoom.value) * 1000
+  return Math.max(0, Math.min(ms, audioEngine.lengthComputed.value))
+}
+function handleRulerMouseDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  seekingViaRuler = true
+  audioEngine.seek(rulerXToMs(e.clientX, rect))
+  document.addEventListener('mousemove', handleRulerDrag)
+  document.addEventListener('mouseup', handleRulerMouseUp)
+  const capturedRect = rect
+  function handleRulerDrag(ev: MouseEvent) {
+    if (!seekingViaRuler) return
+    audioEngine.seek(rulerXToMs(ev.clientX, capturedRect))
+  }
+  function handleRulerMouseUp() {
+    seekingViaRuler = false
+    document.removeEventListener('mousemove', handleRulerDrag)
+    document.removeEventListener('mouseup', handleRulerMouseUp)
+  }
+}
 </script>
 
 <style lang="scss">
@@ -173,6 +203,10 @@ const { visibleTiles } = useSpectrogramTiles({
 
 .spectrogram-ruler {
   font-family: var(--font-monospace);
+}
+
+.spectrogram-ruler-clickable {
+  cursor: pointer;
 }
 
 .spectrogram-container {

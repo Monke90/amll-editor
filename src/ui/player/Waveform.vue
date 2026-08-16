@@ -323,18 +323,31 @@ onBeforeUnmount(() => {
       opacity: 0.35;
     }
   }
+  
   .progress-highlight-handle {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 8px;
+    width: 16px;
     pointer-events: auto;
     cursor: ew-resize;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     &.left {
-      left: -4px;
+      left: -8px;
     }
     &.right {
-      right: -4px;
+      right: -8px;
+    }
+    &::after {
+      content: '';
+      width: 3px;
+      height: 60%;
+      border-radius: 2px;
+      background-color: var(--p-primary-contrast-color, white);
+      opacity: 0.8;
     }
   }
 }

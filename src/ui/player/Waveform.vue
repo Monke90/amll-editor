@@ -21,8 +21,20 @@
         v-for="range in highlightRanges"
         :key="range.key"
         class="progress-highlight"
+        :class="{ adjustable: range.adjustable }"
         :style="{ left: `${range.left}px`, width: `${range.width}px` }"
-      ></div>
+      >
+        <template v-if="range.adjustable">
+          <div
+            class="progress-highlight-handle left"
+            @mousedown.stop="handleZoomHandleMouseDown($event, 'start')"
+          ></div>
+          <div
+            class="progress-highlight-handle right"
+            @mousedown.stop="handleZoomHandleMouseDown($event, 'end')"
+          ></div>
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -30,10 +42,11 @@
 <script setup lang="ts">
 import { useCssVar, useElementBounding } from '@vueuse/core'
 import { clamp } from 'lodash-es'
-import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import WaveSurfer from 'wavesurfer.js'
 
 import { audioEngine } from '@core/audio'
+import { requestSpectrogramZoom } from '@core/spectrogram/zoomRequest'
 
 import { usePrefStore, useRuntimeStore } from '@states/stores'
 
@@ -93,10 +106,41 @@ function handleMouseUp() {
   document.removeEventListener('mouseup', handleMouseUp)
 }
 
+// 只选中一行时，该行的高亮区间可以拖动调整——但这只用于控制频谱图的缩放范围，
+// 不会写回歌词行本身的时间
+const zoomRangeMs = ref<{ start: number; end: number } | null>(null)
+
+watch(
+  () => [...runtimeStore.selectedLines.values()],
+  (lines) => {
+    if (lines.length === 1) {
+      const line = lines[0]!
+      const start = !prefStore.hideLineTiming ? line.startTime : (line.syllables[0]?.startTime ?? 0)
+      const end = !prefStore.hideLineTiming ? line.endTime : (line.syllables.at(-1)?.endTime ?? 0)
+      zoomRangeMs.value = { start, end }
+    } else {
+      zoomRangeMs.value = null
+    }
+  },
+  { immediate: true },
+)
+
 const highlightRanges = computed(() => {
   if (!prefStore.highlightSelectedLineOnProgress || !containRect) return []
   const containerWidth = containRect.width.value
-  const highlights = [...runtimeStore.selectedLines.values()].map((line) => {
+  const selected = [...runtimeStore.selectedLines.values()]
+  if (selected.length === 1 && zoomRangeMs.value) {
+    const { start, end } = zoomRangeMs.value
+    return [
+      {
+        key: selected[0]!.id,
+        left: (start / audioEngine.lengthComputed.value) * containerWidth,
+        width: ((end - start) / audioEngine.lengthComputed.value) * containerWidth,
+        adjustable: true,
+      },
+    ]
+  }
+  return selected.map((line) => {
     const start = !prefStore.hideLineTiming ? line.startTime : (line.syllables[0]?.startTime ?? 0)
     const end = !prefStore.hideLineTiming ? line.endTime : (line.syllables.at(-1)?.endTime ?? 0)
     const dur = end - start
@@ -104,10 +148,51 @@ const highlightRanges = computed(() => {
       key: line.id,
       left: (start / audioEngine.lengthComputed.value) * containerWidth,
       width: (dur / audioEngine.lengthComputed.value) * containerWidth,
+      adjustable: false,
     }
   })
-  return highlights
 })
+
+const MIN_ZOOM_RANGE_MS = 200
+let zoomDragMode: 'start' | 'end' | null = null
+let zoomDragStartClientX = 0
+let zoomDragOrig: { start: number; end: number } | null = null
+
+function handleZoomHandleMouseDown(e: MouseEvent, mode: 'start' | 'end') {
+  if (e.button !== 0 || !zoomRangeMs.value) return
+  e.preventDefault()
+  e.stopPropagation()
+  zoomDragMode = mode
+  zoomDragStartClientX = e.clientX
+  zoomDragOrig = { ...zoomRangeMs.value }
+  document.addEventListener('mousemove', handleZoomHandleMouseMove)
+  document.addEventListener('mouseup', handleZoomHandleMouseUp)
+}
+function handleZoomHandleMouseMove(e: MouseEvent) {
+  if (!zoomDragMode || !zoomDragOrig || !containRect) return
+  const pxPerMs = containRect.width.value / audioEngine.lengthComputed.value
+  if (!pxPerMs) return
+  const deltaMs = (e.clientX - zoomDragStartClientX) / pxPerMs
+  if (zoomDragMode === 'start') {
+    let newStart = zoomDragOrig.start + deltaMs
+    newStart = Math.max(0, Math.min(newStart, zoomDragOrig.end - MIN_ZOOM_RANGE_MS))
+    zoomRangeMs.value = { start: newStart, end: zoomDragOrig.end }
+  } else {
+    let newEnd = zoomDragOrig.end + deltaMs
+    newEnd = Math.min(
+      audioEngine.lengthComputed.value,
+      Math.max(newEnd, zoomDragOrig.start + MIN_ZOOM_RANGE_MS),
+    )
+    zoomRangeMs.value = { start: zoomDragOrig.start, end: newEnd }
+  }
+  if (zoomRangeMs.value) requestSpectrogramZoom(zoomRangeMs.value.start, zoomRangeMs.value.end)
+}
+function handleZoomHandleMouseUp() {
+  zoomDragMode = null
+  zoomDragOrig = null
+  document.removeEventListener('mousemove', handleZoomHandleMouseMove)
+  document.removeEventListener('mouseup', handleZoomHandleMouseUp)
+}
 
 const wavesurferEl = useTemplateRef('wavesurferEl')
 const primaryColor = useCssVar('--p-primary-color')
@@ -232,6 +317,25 @@ onBeforeUnmount(() => {
     bottom: 0;
     background-color: var(--p-primary-color);
     opacity: 0.25;
+
+    &.adjustable {
+      pointer-events: auto;
+      opacity: 0.35;
+    }
+  }
+  .progress-highlight-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    pointer-events: auto;
+    cursor: ew-resize;
+    &.left {
+      left: -4px;
+    }
+    &.right {
+      right: -4px;
+    }
   }
 }
 </style>

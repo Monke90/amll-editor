@@ -384,8 +384,8 @@ onUnmounted(() => {
 
 .syl-block {
   position: absolute;
-  top: 0.4rem;
-  bottom: 0.4rem;
+  top: 0;
+  bottom: 0;
   pointer-events: auto;
   display: flex;
   align-items: center;
@@ -432,8 +432,8 @@ onUnmounted(() => {
 
 .syl-block-handle {
   position: absolute;
-  top: 0.4rem;
-  bottom: 0.4rem;
+  top: 0;
+  bottom: 0;
   width: 8px;
   margin-left: -4px;
   pointer-events: auto;
